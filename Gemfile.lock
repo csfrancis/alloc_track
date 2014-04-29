@@ -1,0 +1,18 @@
+PATH
+  remote: .
+  specs:
+    alloc_track (0.0.1)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rake (10.3.1)
+    rake-compiler (0.9.2)
+      rake
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  alloc_track!
+  rake-compiler (~> 0.9)
