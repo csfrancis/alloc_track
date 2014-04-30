@@ -121,6 +121,11 @@ tracepoint_hook(VALUE tpval, void *data)
         ++current_alloc;
         if (current_limit != 0 && (current_alloc  - current_free) > current_limit) {
           stop();
+          /*
+            it's not safe to raise an exception from an internal event handler.
+            in order to get around this, we enable a normal tracepoint on all
+            events and raise from there.
+          */
           rb_tracepoint_enable(tpval_exception);
         }
       }
@@ -134,8 +139,10 @@ tracepoint_hook(VALUE tpval, void *data)
 static void
 exception_tracepoint_hook(VALUE tpval, void *data)
 {
-  rb_tracepoint_disable(tpval_exception);
-  rb_raise(eAllocTrackLimitExceeded, "allocation limit exceeded");
+  if (is_start_thread()) {
+    rb_tracepoint_disable(tpval_exception);
+    rb_raise(eAllocTrackLimitExceeded, "allocation limit exceeded");
+  }
 }
 
 void
