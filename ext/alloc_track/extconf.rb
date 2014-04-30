@@ -1,7 +1,5 @@
 require 'mkmf'
 have_func('rb_tracepoint_enable')
-have_func('rb_threadptr_pending_interrupt_enque')
-have_func('rb_threadptr_interrupt')
 
 gc_event = have_const('RUBY_INTERNAL_EVENT_NEWOBJ')
 
