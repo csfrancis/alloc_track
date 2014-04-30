@@ -59,9 +59,9 @@ class TestAllocTrack < Test::Unit::TestCase
   end
 
   def test_limit_exception_stops
-    assert_raise AllocTrack::LimitExceeded do
+    assert_raise RuntimeError do
       AllocTrack.limit 100 do
-        200.times { Object.new }
+        raise RuntimeError
       end
     end
     refute AllocTrack.started?

@@ -82,11 +82,16 @@ do_limit(VALUE arg)
   VALUE v;
   start();
   current_limit = FIX2INT(arg);
-  v = rb_yield(Qnil);
+  return rb_yield(Qnil);
+}
+
+static VALUE
+ensure_stopped(VALUE arg)
+{
   if (started()) {
     stop();
   }
-  return v;
+  return Qnil;
 }
 
 static VALUE
@@ -101,7 +106,7 @@ limit(VALUE self, VALUE num_allocs)
   if (!RB_TYPE_P(num_allocs, T_FIXNUM)) {
     rb_raise(rb_eArgError, "limit() must be passed a number");
   }
-  return do_limit(num_allocs);
+  return rb_ensure(do_limit, num_allocs, ensure_stopped, Qnil);
 }
 
 static int
