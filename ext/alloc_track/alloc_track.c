@@ -22,12 +22,26 @@ started()
   return rb_tracepoint_enabled_p(tpval);
 }
 
-static VALUE
-start()
+static void
+validate_started()
+{
+  if (!started()) {
+    rb_raise(rb_eRuntimeError, "allocation tracker has not been started");
+  }
+}
+
+static void
+validate_stopped()
 {
   if (started()) {
     rb_raise(rb_eRuntimeError, "allocation tracker already started");
   }
+}
+
+static VALUE
+start()
+{
+  validate_stopped();
   start_thread = rb_thread_current();
   current_alloc = current_free = current_limit = 0;
   rb_tracepoint_enable(tpval);
@@ -38,9 +52,7 @@ start()
 static VALUE
 stop()
 {
-  if (!started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker is already stopped");
-  }
+  validate_started();
   validate_thread();
   rb_tracepoint_disable(tpval);
   return Qnil;
@@ -49,9 +61,7 @@ stop()
 static VALUE
 alloc()
 {
-  if (!started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker has not been started");
-  }
+  validate_started();
   validate_thread();
   return INT2FIX(current_alloc);
 }
@@ -59,9 +69,7 @@ alloc()
 static VALUE
 _free()
 {
-  if (!started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker has not been started");
-  }
+  validate_started();
   validate_thread();
   return INT2FIX(current_free);
 }
@@ -69,9 +77,7 @@ _free()
 static VALUE
 delta()
 {
-  if (!started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker has not been started");
-  }
+  validate_started();
   validate_thread();
   return INT2FIX(current_alloc - current_free);
 }
@@ -79,7 +85,6 @@ delta()
 static VALUE
 do_limit(VALUE arg)
 {
-  VALUE v;
   start();
   current_limit = FIX2INT(arg);
   return rb_yield(Qnil);
@@ -97,15 +102,13 @@ ensure_stopped(VALUE arg)
 static VALUE
 limit(VALUE self, VALUE num_allocs)
 {
-  if (started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker already started");
-  }
   if (!rb_block_given_p()) {
     rb_raise(rb_eArgError, "block required");
   }
   if (!RB_TYPE_P(num_allocs, T_FIXNUM)) {
     rb_raise(rb_eArgError, "limit() must be passed a number");
   }
+  validate_stopped();
   return rb_ensure(do_limit, num_allocs, ensure_stopped, Qnil);
 }
 
