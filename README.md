@@ -33,3 +33,15 @@ AllocTrack.limit 100 do
 end
 ```
 
+### Performance
+
+In a contrived benchmark that simply allocates 10,000,000 new objects, alloc_track adds ~30% overhead:
+
+```
+[vagrant] ~/src/alloc_track (master *%) $ ruby -Ilib ./test/benchmark_alloc_track.rb
+               user     system      total        real
+none:      1.540000   0.000000   1.540000 (  1.545192)
+tracking:  2.020000   0.000000   2.020000 (  2.034162)
+```
+
+Expect real-world (operations other than just memory allocation) performance overhead to be much less severe.

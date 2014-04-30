@@ -30,3 +30,7 @@ Rake::TestTask.new 'test' do |t|
   t.test_files = FileList['test/test_*.rb']
 end
 task :test => :build
+
+task :benchmark => :build do
+  ruby "-Ilib ./test/benchmark_alloc_track.rb"
+end
