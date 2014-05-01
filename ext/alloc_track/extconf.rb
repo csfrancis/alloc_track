@@ -1,4 +1,7 @@
 require 'mkmf'
+
+$CFLAGS = "-O3"
+
 have_func('rb_tracepoint_enable')
 
 gc_event = have_const('RUBY_INTERNAL_EVENT_NEWOBJ')
