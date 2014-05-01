@@ -2,24 +2,84 @@
 #include "ruby/intern.h"
 #include "ruby/debug.h"
 
+typedef struct stat_collector {
+  struct stat_collector *next;
+  VALUE thread;
+  int current_alloc;
+  int current_free;
+  int current_limit;
+  int limit_signal;
+} stat_collector_t;
+
 static VALUE mAllocTrack;
 static VALUE tpval, tpval_exception;
-static int current_alloc, current_free, current_limit;
-static VALUE start_thread;
 static VALUE eAllocTrackLimitExceeded;
+static stat_collector_t *root_collector, *current_collector;
 
 #define LOG(s) fprintf(stderr, s); fflush(stderr);
 
-static void
-validate_thread()
+static stat_collector_t *
+add_collector(VALUE thread)
 {
-  if (rb_thread_current() != start_thread) rb_raise(rb_eRuntimeError, "called on invalid thread");
+  stat_collector_t *c = (stat_collector_t *) calloc(1, sizeof(*c));
+  c->thread = thread;
+  if (root_collector) {
+    c->next = root_collector;
+    root_collector = c;
+  } else {
+    root_collector = c;
+    rb_tracepoint_enable(tpval);
+  }
+  return c;
+}
+
+static void
+remove_collector(VALUE thread)
+{
+  stat_collector_t *c, *prev = NULL;
+
+  for (c = root_collector; c != NULL; prev = c, c = c->next) {
+    if (c->thread == thread) {
+      if (!prev) {
+        root_collector = c->next;
+      } else {
+        prev->next = c->next;
+      }
+      current_collector = NULL;
+      free(c);
+      break;
+    }
+  }
+
+  if (!root_collector) {
+    rb_tracepoint_disable(tpval);
+  }
+}
+
+static stat_collector_t *
+get_collector(VALUE thread)
+{
+  stat_collector_t *c;
+
+  if (current_collector && current_collector->thread == thread) {
+    return current_collector;
+  }
+
+  for (c = root_collector; c != NULL; c = c->next) {
+    if (c->thread == thread) {
+      /* cache the collector so we don't have to scan the list every time */
+      current_collector = c;
+      return c;
+    }
+  }
+
+  return NULL;
 }
 
 static VALUE
 started()
 {
-  return rb_tracepoint_enabled_p(tpval);
+  return get_collector(rb_thread_current()) ? Qtrue : Qfalse;
 }
 
 static void
@@ -42,10 +102,7 @@ static VALUE
 start()
 {
   validate_stopped();
-  start_thread = rb_thread_current();
-  current_alloc = current_free = current_limit = 0;
-  rb_tracepoint_enable(tpval);
-
+  add_collector(rb_thread_current());
   return Qnil;
 }
 
@@ -53,8 +110,7 @@ static VALUE
 stop()
 {
   validate_started();
-  validate_thread();
-  rb_tracepoint_disable(tpval);
+  remove_collector(rb_thread_current());
   return Qnil;
 }
 
@@ -62,31 +118,30 @@ static VALUE
 alloc()
 {
   validate_started();
-  validate_thread();
-  return INT2FIX(current_alloc);
+  return INT2FIX(get_collector(rb_thread_current())->current_alloc);
 }
 
 static VALUE
 _free()
 {
   validate_started();
-  validate_thread();
-  return INT2FIX(current_free);
+  return INT2FIX(get_collector(rb_thread_current())->current_free);
 }
 
 static VALUE
 delta()
 {
+  stat_collector_t *c;
   validate_started();
-  validate_thread();
-  return INT2FIX(current_alloc - current_free);
+  c = get_collector(rb_thread_current());
+  return INT2FIX(c->current_alloc - c->current_free);
 }
 
 static VALUE
 do_limit(VALUE arg)
 {
   start();
-  current_limit = FIX2INT(arg);
+  get_collector(rb_thread_current())->current_limit = FIX2INT(arg);
   return rb_yield(Qnil);
 }
 
@@ -113,42 +168,70 @@ limit(VALUE self, VALUE num_allocs)
 }
 
 static int
-is_start_thread()
+is_collector_enabled(stat_collector_t *c)
 {
-  return rb_thread_current() == start_thread ? 1 : 0;
+  return c->limit_signal == 0 ? 1 : 0;
+}
+
+static int
+is_collector_limit_exceeded(stat_collector_t *c)
+{
+  return c->limit_signal;
 }
 
 static void
 tracepoint_hook(VALUE tpval, void *data)
 {
+  stat_collector_t *c;
   rb_trace_arg_t *tparg = rb_tracearg_from_tracepoint(tpval);
   rb_event_flag_t flag = rb_tracearg_event_flag(tparg);
   switch(flag) {
     case RUBY_INTERNAL_EVENT_NEWOBJ:
-      if (is_start_thread()) {
-        ++current_alloc;
-        if (current_limit != 0 && (current_alloc  - current_free) > current_limit) {
-          stop();
-          /*
-            it's not safe to raise an exception from an internal event handler.
-            in order to get around this, we enable a normal tracepoint on all
-            events and raise from there.
-          */
-          rb_tracepoint_enable(tpval_exception);
+      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c)) {
+        c->current_alloc++;
+        if (c->current_limit && (c->current_alloc - c->current_free) > c->current_limit) {
+          c->limit_signal = 1;
+          if (!rb_tracepoint_enabled_p(tpval_exception)) {
+            /*
+              it's not safe to raise an exception from an internal event handler.
+              in order to get around this, we enable a normal tracepoint on all
+              events and raise from there.
+            */
+            rb_tracepoint_enable(tpval_exception);
+          }
         }
       }
       break;
     case RUBY_INTERNAL_EVENT_FREEOBJ:
-      if (is_start_thread()) ++current_free;
+      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c)) {
+        c->current_free++;
+      }
       break;
   }
+}
+
+static int
+any_collectors_with_exceeded_limits()
+{
+  stat_collector_t *c;
+  for (c = root_collector; c != NULL; c = c->next) {
+    if (c->limit_signal) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 static void
 exception_tracepoint_hook(VALUE tpval, void *data)
 {
-  if (is_start_thread()) {
-    rb_tracepoint_disable(tpval_exception);
+  VALUE th = rb_thread_current();
+  stat_collector_t *c;
+  if ((c = get_collector(th)) != NULL && is_collector_limit_exceeded(c)) {
+    remove_collector(th);
+    if (!any_collectors_with_exceeded_limits()) {
+      rb_tracepoint_disable(tpval_exception);
+    }
     rb_raise(eAllocTrackLimitExceeded, "allocation limit exceeded");
   }
 }

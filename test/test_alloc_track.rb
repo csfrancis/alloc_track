@@ -66,4 +66,65 @@ class TestAllocTrack < Test::Unit::TestCase
     end
     refute AllocTrack.started?
   end
+
+  def test_limit_with_thread
+    AllocTrack.start
+    t = Thread.new do
+      assert_raise AllocTrack::LimitExceeded do
+        AllocTrack.limit 100 do
+          200.times { Object.new }
+        end
+      end
+    end
+    t.join
+    assert AllocTrack.delta < 100
+    assert AllocTrack.started?
+    AllocTrack.stop
+  end
+
+  def test_limit_on_multiple_threads
+    assert_nothing_raised do
+      AllocTrack.limit 100 do
+        t = Thread.new do
+          assert_raise AllocTrack::LimitExceeded do
+            AllocTrack.limit 100 do
+              200.times { Object.new }
+            end
+          end
+        end
+        t.join
+      end
+    end
+  end
+
+  def test_limit_exceeded_on_multiple_threads
+    assert_raise AllocTrack::LimitExceeded do
+      AllocTrack.limit 100 do
+        t = Thread.new do
+          assert_raise AllocTrack::LimitExceeded do
+            AllocTrack.limit 100 do
+              200.times { Object.new }
+            end
+          end
+        end
+        t.join
+        200.times { Object.new }
+      end
+    end
+  end
+
+  def test_start_on_multiple_threads
+    AllocTrack.start
+    100.times { Object.new }
+    t = Thread.new do
+      AllocTrack.start
+      assert AllocTrack.delta < 100
+      100.times { Object.new }
+      assert AllocTrack.delta >= 100
+      AllocTrack.stop
+    end
+    t.join
+    assert AllocTrack.delta < 200
+    AllocTrack.stop
+  end
 end
