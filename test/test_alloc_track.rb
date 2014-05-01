@@ -29,6 +29,12 @@ class TestAllocTrack < Test::Unit::TestCase
     AllocTrack.stop
   end
 
+  def test_delta_raises_when_not_started
+    assert_raise AllocTrack::Error do
+      AllocTrack.delta
+    end
+  end
+
   def test_limit_with_no_block
     assert_raise ArgumentError do
       AllocTrack.limit 100

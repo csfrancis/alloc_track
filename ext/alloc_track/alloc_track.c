@@ -13,7 +13,7 @@ typedef struct stat_collector {
 
 static VALUE mAllocTrack;
 static VALUE tpval, tpval_exception;
-static VALUE eAllocTrackLimitExceeded;
+static VALUE eAllocTrackError, eAllocTrackLimitExceeded;
 static stat_collector_t *root_collector, *current_collector;
 
 #define LOG(s) fprintf(stderr, s); fflush(stderr);
@@ -86,7 +86,7 @@ static void
 validate_started()
 {
   if (!started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker has not been started");
+    rb_raise(eAllocTrackError, "allocation tracker has not been started");
   }
 }
 
@@ -94,7 +94,7 @@ static void
 validate_stopped()
 {
   if (started()) {
-    rb_raise(rb_eRuntimeError, "allocation tracker already started");
+    rb_raise(eAllocTrackError, "allocation tracker already started");
   }
 }
 
@@ -249,6 +249,7 @@ Init_alloc_track()
   rb_define_singleton_method(mAllocTrack, "delta", delta, 0);
   rb_define_singleton_method(mAllocTrack, "limit", limit, 1);
 
+  eAllocTrackError = rb_define_class_under(mAllocTrack, "Error", rb_eStandardError);
   eAllocTrackLimitExceeded = rb_define_class_under(mAllocTrack, "LimitExceeded", rb_eStandardError);
 
   tpval = rb_tracepoint_new(0, RUBY_INTERNAL_EVENT_NEWOBJ|RUBY_INTERNAL_EVENT_FREEOBJ, tracepoint_hook, NULL);
