@@ -5,7 +5,8 @@ Tracks the number of outstanding allocations on a Ruby thread using the internal
 ### Features
 
 - C extension for webscale
-- Allocations are only counted on the thread that invoked the tracker
+- Allocations are counted per thread
+- Allocations limits can be set on multiple threads
 
 ### Usage
 
