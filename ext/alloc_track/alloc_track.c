@@ -2,8 +2,10 @@
 #include "ruby/intern.h"
 #include "ruby/debug.h"
 
+#define ALLOCTRACK_OBJ_BIT FL_USER17
+
 typedef struct stat_collector {
-  struct stat_collector *next;
+  struct stat_collector *next; /* not currently used */
   VALUE thread;
   int current_alloc;
   int current_free;
@@ -102,6 +104,10 @@ static VALUE
 start()
 {
   validate_stopped();
+  /* TODO: support multiple running trackers */
+  if (root_collector) {
+    rb_raise(eAllocTrackError, "allocation tracker already running on another thread");
+  }
   add_collector(rb_thread_current());
   return Qnil;
 }
@@ -185,10 +191,13 @@ tracepoint_hook(VALUE tpval, void *data)
   stat_collector_t *c;
   rb_trace_arg_t *tparg = rb_tracearg_from_tracepoint(tpval);
   rb_event_flag_t flag = rb_tracearg_event_flag(tparg);
+  VALUE obj = rb_tracearg_object(tparg);
   switch(flag) {
     case RUBY_INTERNAL_EVENT_NEWOBJ:
       if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c)) {
+        RBASIC(obj)->flags |= ALLOCTRACK_OBJ_BIT;
         c->current_alloc++;
+
         if (c->current_limit && (c->current_alloc - c->current_free) > c->current_limit) {
           c->limit_signal = 1;
           if (!rb_tracepoint_enabled_p(tpval_exception)) {
@@ -203,7 +212,8 @@ tracepoint_hook(VALUE tpval, void *data)
       }
       break;
     case RUBY_INTERNAL_EVENT_FREEOBJ:
-      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c)) {
+      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c) &&
+          (RBASIC(obj)->flags & ALLOCTRACK_OBJ_BIT)) {
         c->current_free++;
       }
       break;
