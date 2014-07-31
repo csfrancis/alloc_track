@@ -6,7 +6,7 @@ Tracks the number of outstanding allocations on a Ruby thread using the internal
 
 - C extension for webscale
 - Allocations are counted per thread
-- Allocations limits can be set on multiple threads
+- Can raise an exception when allocations exceed a certain threshold
 
 ### Usage
 
@@ -46,3 +46,7 @@ tracking:  2.020000   0.000000   2.020000 (  2.034162)
 ```
 
 Expect real-world (operations other than just memory allocation) performance overhead to be much less severe.
+
+### Limitations
+
+- Allocation tracker can only be run on one thread per process
