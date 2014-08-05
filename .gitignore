@@ -2,3 +2,4 @@
 /lib/alloc_track/*.so
 /lib/alloc_track/*.bundle
 /tmp/*
+alloc_track-*.gem
