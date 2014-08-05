@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'alloc_track'
-  s.version = '0.0.1'
+  s.version = '0.0.2'
   s.summary = 'allocation tracker for ruby 2.1+'
   s.description = 'tracks memory allocations with rgengc in ruby 2.1'
 
