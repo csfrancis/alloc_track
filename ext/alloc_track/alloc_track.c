@@ -2,7 +2,7 @@
 #include "ruby/intern.h"
 #include "ruby/debug.h"
 
-#define ALLOCTRACK_OBJ_BIT FL_USER17
+#define ALLOCTRACK_OBJ_BIT FL_USER18
 
 typedef struct stat_collector {
   struct stat_collector *next; /* not currently used */
