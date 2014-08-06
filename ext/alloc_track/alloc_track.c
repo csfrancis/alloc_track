@@ -174,12 +174,6 @@ limit(VALUE self, VALUE num_allocs)
 }
 
 static int
-is_collector_enabled(stat_collector_t *c)
-{
-  return c->limit_signal == 0 ? 1 : 0;
-}
-
-static int
 is_collector_limit_exceeded(stat_collector_t *c)
 {
   return c->limit_signal;
@@ -194,7 +188,7 @@ tracepoint_hook(VALUE tpval, void *data)
   VALUE obj = rb_tracearg_object(tparg);
   switch(flag) {
     case RUBY_INTERNAL_EVENT_NEWOBJ:
-      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c)) {
+      if ((c = get_collector(rb_thread_current())) != NULL) {
         RBASIC(obj)->flags |= ALLOCTRACK_OBJ_BIT;
         c->current_alloc++;
 
@@ -212,8 +206,7 @@ tracepoint_hook(VALUE tpval, void *data)
       }
       break;
     case RUBY_INTERNAL_EVENT_FREEOBJ:
-      if ((c = get_collector(rb_thread_current())) != NULL && is_collector_enabled(c) &&
-          (RBASIC(obj)->flags & ALLOCTRACK_OBJ_BIT)) {
+      if ((c = get_collector(rb_thread_current())) != NULL && (RBASIC(obj)->flags & ALLOCTRACK_OBJ_BIT)) {
         c->current_free++;
       }
       break;
@@ -235,14 +228,22 @@ any_collectors_with_exceeded_limits()
 static void
 exception_tracepoint_hook(VALUE tpval, void *data)
 {
+  int should_raise = 0;
   VALUE th = rb_thread_current();
   stat_collector_t *c;
   if ((c = get_collector(th)) != NULL && is_collector_limit_exceeded(c)) {
-    remove_collector(th);
+    rb_gc(); /* try to gc before raising */
+    if ((c->current_alloc - c->current_free) > c->current_limit) {
+      remove_collector(th);
+      should_raise = 1;
+    } else {
+      c->limit_signal = 0;
+    }
     if (!any_collectors_with_exceeded_limits()) {
       rb_tracepoint_disable(tpval_exception);
     }
-    rb_raise(eAllocTrackLimitExceeded, "allocation limit exceeded");
+
+    if (should_raise) rb_raise(eAllocTrackLimitExceeded, "allocation limit exceeded");
   }
 }
 

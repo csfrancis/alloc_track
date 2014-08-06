@@ -49,11 +49,22 @@ class TestAllocTrack < Test::Unit::TestCase
   end
 
   def test_limit_raises
+    vals = []
     assert_raise AllocTrack::LimitExceeded do
       AllocTrack.limit 10 do
+        200.times { vals.push(Object.new) }
+      end
+    end
+  end
+
+  def test_limit_invokes_gc
+    stat = GC.stat
+    assert_nothing_raised do
+      AllocTrack.limit 50 do
         200.times { Object.new }
       end
     end
+    assert_operator GC.stat[:count], :>, stat[:count]
   end
 
   def test_within_limit
