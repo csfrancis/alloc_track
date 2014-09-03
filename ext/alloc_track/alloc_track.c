@@ -4,13 +4,16 @@
 
 #define ALLOCTRACK_OBJ_BIT FL_USER18
 
+#define MAX(_x, _y) ( (_x) > (_y) ? (_x) : (_y) )
+
 typedef struct stat_collector {
   struct stat_collector *next; /* not currently used */
   VALUE thread;
-  int current_alloc;
-  int current_free;
-  int current_limit;
-  int limit_signal;
+  int64_t current_alloc;
+  int64_t current_free;
+  int64_t current_limit;
+  int     limit_signal;
+  int64_t max_delta;
 } stat_collector_t;
 
 static VALUE mAllocTrack;
@@ -124,14 +127,14 @@ static VALUE
 alloc()
 {
   validate_started();
-  return INT2FIX(get_collector(rb_thread_current())->current_alloc);
+  return LL2NUM(get_collector(rb_thread_current())->current_alloc);
 }
 
 static VALUE
 _free()
 {
   validate_started();
-  return INT2FIX(get_collector(rb_thread_current())->current_free);
+  return LL2NUM(get_collector(rb_thread_current())->current_free);
 }
 
 static VALUE
@@ -140,7 +143,16 @@ delta()
   stat_collector_t *c;
   validate_started();
   c = get_collector(rb_thread_current());
-  return INT2FIX(c->current_alloc - c->current_free);
+  return LL2NUM(c->current_alloc - c->current_free);
+}
+
+static VALUE
+max_delta()
+{
+  stat_collector_t *c;
+  validate_started();
+  c = get_collector(rb_thread_current());
+  return LL2NUM(c->max_delta);
 }
 
 static VALUE
@@ -191,6 +203,7 @@ tracepoint_hook(VALUE tpval, void *data)
       if ((c = get_collector(rb_thread_current())) != NULL) {
         RBASIC(obj)->flags |= ALLOCTRACK_OBJ_BIT;
         c->current_alloc++;
+        c->max_delta = MAX( c->current_alloc - c->current_free, c->max_delta);
 
         if (c->current_limit && (c->current_alloc - c->current_free) > c->current_limit) {
           c->limit_signal = 1;
@@ -259,6 +272,7 @@ Init_alloc_track()
   rb_define_singleton_method(mAllocTrack, "free", _free, 0);
   rb_define_singleton_method(mAllocTrack, "delta", delta, 0);
   rb_define_singleton_method(mAllocTrack, "limit", limit, 1);
+  rb_define_singleton_method(mAllocTrack, "max_delta", max_delta, 0);
 
   eAllocTrackError = rb_define_class_under(mAllocTrack, "Error", rb_eStandardError);
   eAllocTrackLimitExceeded = rb_define_class_under(mAllocTrack, "LimitExceeded", rb_eStandardError);

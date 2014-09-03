@@ -19,6 +19,17 @@ class TestAllocTrack < Test::Unit::TestCase
     AllocTrack.stop
   end
 
+  def test_max_delta
+    AllocTrack.start
+    max_delta = 0
+    100.times do
+      Object.new
+      max_delta = [max_delta, AllocTrack.delta].max
+    end
+    assert (AllocTrack.max_delta - max_delta ).abs < 10 #close enough
+    AllocTrack.stop
+  end
+
   def test_thread_not_included
     AllocTrack.start
     t = Thread.new do
