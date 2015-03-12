@@ -2,7 +2,7 @@
 #include "ruby/intern.h"
 #include "ruby/debug.h"
 
-#define ALLOCTRACK_OBJ_BIT FL_USER18
+#define ALLOCTRACK_OBJ_BIT FL_USER19
 
 #define MAX(_x, _y) ( (_x) > (_y) ? (_x) : (_y) )
 
